@@ -32,42 +32,45 @@ class EventVisualizer:
         cv2.putText(frame, text, (text_x, text_y), self.banner_font,
                     self.banner_font_scale, color, self.banner_thickness)
         
-        return frame
-        
     def draw_pass_event(self, frame: np.ndarray, event: PassEvent, tracks: Dict):
         """Visualize a pass event with arrow and banner."""
-        # Get player positions
-        passer = tracks["players"][event.start_frame][event.passer_id]
-        if event.receiver_id and event.receiver_id in tracks["players"][event.end_frame]:
-            receiver = tracks["players"][event.end_frame][event.receiver_id]
-            
-            # Draw arrow between players
-            start_pos = tuple(map(int, passer['position']))
-            end_pos = tuple(map(int, receiver['position']))
-            
-            # Calculate arrow properties
-            angle = np.arctan2(end_pos[1] - start_pos[1], end_pos[0] - start_pos[0])
-            arrow_length = 30
-            arrow_points = np.array([
-                [arrow_length, 0],
-                [0, arrow_length//2],
-                [0, -arrow_length//2]
-            ])
-            
-            # Rotate arrow points
-            rotation_matrix = np.array([
-                [np.cos(angle), -np.sin(angle)],
-                [np.sin(angle), np.cos(angle)]
-            ])
-            arrow_points = np.dot(arrow_points, rotation_matrix.T)
-            arrow_points += end_pos
-            
-            # Draw the arrow
-            cv2.arrowedLine(frame, start_pos, end_pos, (0, 255, 0), self.arrow_thickness)
-            
-        # Draw banner
+        # Draw banner first (this should always show)
         banner_text = f"PASS IN PROGRESS: Player {event.passer_id} → Player {event.receiver_id}"
         self.draw_event_banner(frame, banner_text, (0, 255, 0))
+        
+        # Try to draw arrow if both players are visible
+        try:
+            # Get player positions
+            passer = tracks["players"][event.start_frame][event.passer_id]
+            if event.receiver_id and event.receiver_id in tracks["players"][event.end_frame]:
+                receiver = tracks["players"][event.end_frame][event.receiver_id]
+                
+                # Draw arrow between players
+                start_pos = tuple(map(int, passer['position']))
+                end_pos = tuple(map(int, receiver['position']))
+                
+                # Calculate arrow properties
+                angle = np.arctan2(end_pos[1] - start_pos[1], end_pos[0] - start_pos[0])
+                arrow_length = 30
+                arrow_points = np.array([
+                    [arrow_length, 0],
+                    [0, arrow_length//2],
+                    [0, -arrow_length//2]
+                ])
+                
+                # Rotate arrow points
+                rotation_matrix = np.array([
+                    [np.cos(angle), -np.sin(angle)],
+                    [np.sin(angle), np.cos(angle)]
+                ])
+                arrow_points = np.dot(arrow_points, rotation_matrix.T)
+                arrow_points += end_pos
+                
+                # Draw the arrow
+                cv2.arrowedLine(frame, start_pos, end_pos, (0, 255, 0), self.arrow_thickness)
+        except (KeyError, IndexError):
+            # If either player is not in tracking data, just show the banner without the arrow
+            pass
         
     def draw_pressure_event(self, frame: np.ndarray, event: PressureEvent, tracks: Dict):
         """Visualize a pressure event with intensity indicator."""
@@ -96,6 +99,19 @@ class EventVisualizer:
         banner_text = f"POSSESSION CHANGE: Team {event.previous_team} → Team {event.new_team}"
         self.draw_event_banner(frame, banner_text, (255, 165, 0))
         
+        # Draw field zone highlight
+        h, w = frame.shape[:2]
+        overlay = frame.copy()
+        
+        if event.field_zone == "midfield":
+            cv2.rectangle(overlay, (w//3, 0), (2*w//3, h), (255, 165, 0), -1)
+        elif event.field_zone == "defensive_third":
+            cv2.rectangle(overlay, (0, 0), (w//3, h), (255, 165, 0), -1)
+        else:  # final_third
+            cv2.rectangle(overlay, (2*w//3, 0), (w, h), (255, 165, 0), -1)
+            
+        cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+        
     def draw_events(self, frame: np.ndarray, events: List[Event], frame_num: int, tracks: Dict) -> np.ndarray:
         """Draw all events on the frame."""
         # Update active pass events
@@ -106,30 +122,17 @@ class EventVisualizer:
             if isinstance(event, PassEvent):
                 self.active_pass_events.append(event)
         
-        # Draw pass banners
-        banner_offset = 0
+        # Draw pass events
         for pass_event in self.active_pass_events:
             progress = (frame_num - pass_event.start_frame) / (pass_event.end_frame - pass_event.start_frame)
             if 0 <= progress <= 1:
-                frame = self.draw_event_banner(
-                    frame,
-                    pass_event.description,
-                    (0, 128, 0)  # Green color for passes
-                )
+                self.draw_pass_event(frame, pass_event, tracks)
         
-        # Draw pressure events
+        # Draw other events
         for event in events:
             if isinstance(event, PressureEvent):
-                frame = self.draw_event_banner(
-                    frame,
-                    event.description,
-                    (255, 0, 0)  # Red color for pressure
-                )
+                self.draw_pressure_event(frame, event, tracks)
             elif isinstance(event, PossessionChangeEvent):
-                frame = self.draw_event_banner(
-                    frame,
-                    event.description,
-                    (0, 0, 255)  # Blue color for possession changes
-                )
+                self.draw_possession_change(frame, event)
         
         return frame 
