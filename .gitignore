@@ -1,2 +1,39 @@
-*__pycahce__*
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+
+# Model files and weights
+*.pt
+*.pth
+*.h5
+*.model
+*.weights
+models/
+weights/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+.DS_Store
+.env
+*.log
